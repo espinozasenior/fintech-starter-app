@@ -140,11 +140,92 @@ export function useWallet() {
 
       /**
        * Send tokens gaslessly (ZeroDev sponsored)
-       * TODO: Implement gasless transfers via ZeroDev bundler + paymaster
+       * Uses transfer-only session key for USDC transfers
        * No gas fees required from user
        */
       async sendSponsored(to: string, asset: string, amount: string) {
-        throw new Error("Gasless transfers not yet implemented with ZeroDev - use regular send() for now");
+        if (!address) throw new Error("Wallet address not yet available");
+
+        if (asset !== 'USDC') {
+          throw new Error('Only USDC gasless transfers supported');
+        }
+
+        // Check if user has transfer session key
+        const statusResponse = await fetch(`/api/transfer/register?address=${address}`);
+        const status = await statusResponse.json();
+
+        if (!status.isEnabled) {
+          throw new Error('Gasless transfers not enabled. Please enable in settings first.');
+        }
+
+        // Execute gasless transfer
+        const response = await fetch('/api/transfer/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, recipient: to, amount })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Gasless transfer failed');
+        }
+
+        return result.hash;
+      },
+
+      /**
+       * Enable gasless transfers by creating transfer session key
+       * Must be called before using sendSponsored()
+       */
+      async enableGaslessTransfers() {
+        if (!address) throw new Error("Wallet address not yet available");
+        if (!embeddedWallet) throw new Error("Embedded wallet not available");
+
+        // Create transfer session key
+        const response = await fetch('/api/transfer/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address,
+            privyWallet: {
+              address: embeddedWallet.address,
+              getEthereumProvider: embeddedWallet.getEthereumProvider.bind(embeddedWallet),
+            }
+          })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to enable gasless transfers');
+        }
+
+        return {
+          smartAccountAddress: result.smartAccountAddress,
+          expiry: result.expiry,
+        };
+      },
+
+      /**
+       * Revoke gasless transfer permissions
+       */
+      async revokeGaslessTransfers() {
+        if (!address) throw new Error("Wallet address not yet available");
+
+        const response = await fetch('/api/transfer/register', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to revoke gasless transfers');
+        }
+
+        return true;
       },
 
       /**

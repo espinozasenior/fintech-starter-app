@@ -4,7 +4,9 @@
 
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.DATABASE_URL!);
+// Use test database URL or fallback to a mock connection string
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://test:test@localhost:5432/test_db';
+const sql = neon(DATABASE_URL);
 
 export interface TestUser {
   id: string;
@@ -262,5 +264,86 @@ export async function getAgentActions(
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
     LIMIT ${limit}
+  `;
+}
+
+/**
+ * Create test transfer session key
+ */
+export async function createTestTransferSession(
+  walletAddress: string
+): Promise<any> {
+  // Generate proper hex addresses for testing
+  const smartAccount = `0x${'a'.repeat(40)}` as `0x${string}`;
+  const sessionKey = `0x${'b'.repeat(40)}` as `0x${string}`;
+
+  const transferAuth = {
+    type: 'zerodev-transfer-session',
+    smartAccountAddress: smartAccount,
+    sessionKeyAddress: sessionKey,
+    sessionPrivateKey: `0x${'1234567890abcdef'.repeat(4)}` as `0x${string}`,
+    expiry: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+    createdAt: Date.now(),
+  };
+
+  await sql`
+    UPDATE users
+    SET transfer_authorization = ${JSON.stringify(transferAuth)}::jsonb
+    WHERE wallet_address = ${walletAddress}
+  `;
+
+  return transferAuth;
+}
+
+/**
+ * Create test agent session key with full permissions
+ */
+export async function createTestAgentSession(
+  walletAddress: string
+): Promise<any> {
+  // Generate proper hex addresses for vaults
+  const vault1 = `0x${'c'.repeat(40)}` as `0x${string}`;
+  const vault2 = `0x${'d'.repeat(40)}` as `0x${string}`;
+
+  const agentAuth = {
+    type: 'zerodev-agent-session',
+    smartAccountAddress: `0x${'e'.repeat(40)}` as `0x${string}`,
+    sessionKeyAddress: `0x${'f'.repeat(40)}` as `0x${string}`,
+    sessionPrivateKey: `0x${'fedcba0987654321'.repeat(4)}` as `0x${string}`,
+    expiry: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
+    approvedVaults: [vault1, vault2],
+    timestamp: Date.now(),
+  };
+
+  await sql`
+    UPDATE users
+    SET authorization_7702 = ${JSON.stringify(agentAuth)}::jsonb,
+        agent_registered = true
+    WHERE wallet_address = ${walletAddress}
+  `;
+
+  return agentAuth;
+}
+
+/**
+ * Cleanup transfer session for testing
+ */
+export async function cleanupTransferSession(walletAddress: string): Promise<void> {
+  await sql`
+    UPDATE users
+    SET transfer_authorization = NULL
+    WHERE wallet_address = ${walletAddress}
+  `;
+}
+
+/**
+ * Cleanup agent session for testing
+ */
+export async function cleanupAgentSession(walletAddress: string): Promise<void> {
+  await sql`
+    UPDATE users
+    SET authorization_7702 = NULL,
+        agent_registered = false
+    WHERE wallet_address = ${walletAddress}
   `;
 }

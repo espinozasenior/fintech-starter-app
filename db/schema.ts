@@ -6,7 +6,8 @@ export const users = pgTable("users", {
   walletAddress: text("wallet_address").unique().notNull(),
   autoOptimizeEnabled: boolean("auto_optimize_enabled").default(false),
   agentRegistered: boolean("agent_registered").default(false),
-  authorization7702: jsonb("authorization_7702"), // EIP-7702 authorization data
+  authorization7702: jsonb("authorization_7702"), // EIP-7702 authorization data (agent session keys)
+  transferAuthorization: jsonb("transfer_authorization"), // Transfer-only session keys
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
