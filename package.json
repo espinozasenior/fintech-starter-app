@@ -19,10 +19,7 @@
     "test:watch": "vitest watch"
   },
   "dependencies": {
-    "@crossmint/client-sdk-react-ui": "2.6.6",
-    "@dynamic-labs/ethereum": "4.28.0",
-    "@dynamic-labs/sdk-react-core": "4.28.0",
-    "@dynamic-labs/wagmi-connector": "4.28.0",
+    "@crossmint/client-sdk-react-ui": "2.6.16",
     "@heroicons/react": "2.0.18",
     "@morpho-org/blue-sdk": "^2.3.1",
     "@morpho-org/blue-sdk-viem": "^2.2.2",
@@ -74,19 +71,5 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.18"
-  },
-  "pnpm": {
-    "overrides": {
-      "@dynamic-labs/ethereum": "4.28.0",
-      "@dynamic-labs/sdk-react-core": "4.28.0",
-      "@dynamic-labs/wagmi-connector": "4.28.0",
-      "@dynamic-labs/embedded-wallet-evm": "4.28.0",
-      "@dynamic-labs/types": "4.28.0",
-      "@dynamic-labs/logger": "4.28.0",
-      "@dynamic-labs/ethereum-core": "4.28.0",
-      "@dynamic-labs/rpc-providers": "4.28.0",
-      "@dynamic-labs/assert-package-version": "4.28.0",
-      "@dynamic-labs/wallet-connector-core": "4.28.0"
-    }
   }
 }

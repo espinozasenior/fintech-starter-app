@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { EVMWallet, useWallet } from "@crossmint/client-sdk-react-ui";
 import Image from "next/image";
 import { Info } from "lucide-react";
-import { YieldOpportunity, YieldPosition } from "@/hooks/useOptimizer";
+import { YieldAction, YieldOpportunity, exitYield, getYieldBalance } from "@/hooks/useYields";
 
 interface PositionsListProps {
-  positions: YieldPosition[];
+  positions: YieldAction[];
   yields: YieldOpportunity[];
   isLoading: boolean;
   onExitSuccess: () => void;
@@ -46,17 +46,10 @@ const formatUsdAmount = (amountUsd: string | undefined, amount: string | undefin
   return "0.00";
 };
 
-// Format APY for display (avoids conflict with imported formatApy)
-const formatApyLocal = (apy: number) => {
+// Format APY for display
+const formatApy = (apy: number) => {
   return `${(apy * 100).toFixed(2)}%`;
 };
-
-interface UnsignedTransaction {
-  to: string;
-  data: string;
-  value?: string;
-  gasLimit?: string;
-}
 
 export function PositionsList({ positions, yields, isLoading, onExitSuccess }: PositionsListProps) {
   const { wallet } = useWallet();
@@ -68,7 +61,7 @@ export function PositionsList({ positions, yields, isLoading, onExitSuccess }: P
     return yields.find((y) => y.id === yieldId);
   };
 
-  const handleExit = async (position: YieldPosition) => {
+  const handleExit = async (position: YieldAction) => {
     if (!wallet?.address) {
       setError("No wallet connected");
       return;
@@ -78,48 +71,38 @@ export function PositionsList({ positions, yields, isLoading, onExitSuccess }: P
     setExitingId(position.id);
 
     try {
-      console.log("[Yield] Exiting position:", {
-        protocol: position.protocol,
-        yieldId: position.yieldId,
-        amount: position.amount,
-      });
+      // Fetch current balance to pass to exit
+      const balance = await getYieldBalance(position.yieldId, wallet.address);
 
-      // Call withdrawal API to build transaction
-      const response = await fetch("/api/withdraw", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          protocol: position.protocol || "morpho",
-          userAddress: wallet.address,
-          vaultAddress: position.vaultAddress,
-          // For Morpho, we withdraw all shares
-          // The position.amount is in USDC units, convert to smallest unit (6 decimals)
-          shares: position.shares || (BigInt(Math.floor(parseFloat(position.amount) * 1e6))).toString(),
-        }),
-      });
+      // Get unsigned transactions for exit
+      const response = await exitYield(position.yieldId, wallet.address, balance);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to build withdrawal transaction");
+      // Sort transactions by stepIndex to ensure correct order
+      const sortedTransactions = [...(response.transactions || [])].sort(
+        (a: any, b: any) => (a.stepIndex || 0) - (b.stepIndex || 0)
+      );
+
+      // Execute each transaction through Crossmint wallet
+      const evmWallet = EVMWallet.from(wallet);
+
+      for (let i = 0; i < sortedTransactions.length; i++) {
+        const tx = sortedTransactions[i];
+        const unsignedTx = JSON.parse(tx.unsignedTransaction);
+
+        // Send the transaction with all relevant parameters
+        const txResult = await evmWallet.sendTransaction({
+          to: unsignedTx.to,
+          data: unsignedTx.data,
+          value: unsignedTx.value || "0x0",
+          ...(unsignedTx.gasLimit && { gas: unsignedTx.gasLimit }),
+        });
+
+        // Small delay between transactions
+        if (i < sortedTransactions.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
 
-      const tx = await response.json();
-      const unsignedTx = JSON.parse(tx.unsignedTransaction) as UnsignedTransaction;
-
-      console.log("[Yield] Executing withdrawal transaction");
-
-      // Execute withdrawal transaction through Crossmint wallet
-      const evmWallet = EVMWallet.from(wallet!);
-      const txResult = await evmWallet.sendTransaction({
-        to: unsignedTx.to as `0x${string}`,
-        data: unsignedTx.data as `0x${string}`,
-        value: BigInt(unsignedTx.value || "0"),
-        ...(unsignedTx.gasLimit && { gas: BigInt(unsignedTx.gasLimit) }),
-      });
-
-      console.log("[Yield] Withdrawal successful:", txResult);
-      
-      // Refresh positions after successful exit
       onExitSuccess();
     } catch (err: any) {
       console.error("[Yield] Exit error:", err);
@@ -165,7 +148,7 @@ export function PositionsList({ positions, yields, isLoading, onExitSuccess }: P
   }
 
   return (
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex w-full flex-col gap-4">
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
       {/* Testnet disclaimer */}
@@ -194,81 +177,51 @@ export function PositionsList({ positions, yields, isLoading, onExitSuccess }: P
         return (
           <div
             key={position.id}
-            className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
+            className="rounded-xl border border-gray-200 bg-white p-4"
           >
-            <div className="flex items-start justify-between">
+            {/* Main content row */}
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Image
                   src={"/usdc.svg"}
                   alt={position.yieldId}
-                  width={36}
-                  height={36}
+                  width={40}
+                  height={40}
                   unoptimized
                 />
 
                 {/* Position info */}
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-900">
-                      {formatProviderName(position.yieldId)}
-                    </span>
-                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                      Earning
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-500">${displayAmount} USDC</p>
+                  <p className="font-semibold text-gray-900">
+                    ${displayAmount} USDC
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    {formatProviderName(position.yieldId)}
+                  </p>
                 </div>
               </div>
 
-              {/* APY */}
-              {apy !== undefined && (
-                <div className="text-right">
-                  <div className="text-lg font-bold text-blue-600">{formatApyLocal(apy)}</div>
-                  <div className="text-xs text-gray-500">APY</div>
-                </div>
-              )}
+              {/* Earnings & APY */}
+              <div className="text-right">
+                {estimatedYearlyEarnings && (
+                  <p className="font-semibold text-green-500">
+                    +${estimatedYearlyEarnings}/year
+                  </p>
+                )}
+                {apy !== undefined && (
+                  <p className="text-sm text-gray-400">{formatApy(apy)} APY</p>
+                )}
+              </div>
             </div>
 
-            {/* Rewards & Earnings info */}
-            <div className="mt-3 space-y-2">
-              {position.rewards && (
-                <div className="rounded-lg bg-blue-50 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-blue-900">
-                      📈 Total Earned: ${position.rewards.totalEarned} USDC
-                    </span>
-                    <span className="text-xs text-blue-700">
-                      {position.rewards.daysActive} {position.rewards.daysActive === 1 ? "day" : "days"} active
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-blue-700">
-                    💰 Current rate: ~${position.rewards.monthlyRate} USDC/month
-                  </p>
-                </div>
-              )}
-              {!position.rewards && estimatedYearlyEarnings && (
-                <div className="rounded-lg bg-green-50 p-2">
-                  <p className="text-xs text-green-700">
-                    💰 Earning ~${estimatedYearlyEarnings} USDC/year at{" "}
-                    {apy ? formatApyLocal(apy) : "current"} rate
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Exit button & Created date */}
-            <div className="mt-3 flex items-center justify-between">
-              <p className="self-end text-xs text-gray-400">
-                Enrolled {new Date(position.createdAt).toLocaleDateString()}
-              </p>
-              <button
-                onClick={() => handleExit(position)}
-                disabled={isExiting}
-                className="rounded-full border border-red-200 bg-red-50 px-4 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isExiting ? "Exiting..." : "Exit Position"}
-              </button>
-            </div>
+            {/* Exit button */}
+            <button
+              onClick={() => handleExit(position)}
+              disabled={isExiting}
+              className="mt-4 w-full rounded-xl border border-gray-200 py-3 text-center text-sm font-medium text-gray-900 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isExiting ? "Exiting..." : "Exit position"}
+            </button>
           </div>
         );
       })}
