@@ -7,6 +7,7 @@ Fixed the "AA14 initCode must return sender" error that prevented users from exe
 ## Root Cause
 
 The smart account creation flow was not handling the first deployment:
+
 1. During registration, ZeroDev SDK computes a counterfactual address (account not deployed)
 2. During first deposit, SDK was told the account exists (`address: params.smartAccountAddress`)
 3. SDK assumed account was deployed and didn't generate initCode
@@ -17,6 +18,7 @@ The smart account creation flow was not handling the first deployment:
 **File**: `lib/zerodev/kernel-client.ts`
 
 ### Changes:
+
 1. **Import** (line 9): Added `checkSmartAccountActive` helper function
 2. **Deployment check** (lines 68-74): Check if account has bytecode deployed on-chain
 3. **Conditional address parameter** (lines 76-93): Only pass address to SDK if account is already deployed
@@ -48,6 +50,7 @@ Subsequent Deposits (Account Deployed):
 ## Verification
 
 ### Expected Logs on First Deposit:
+
 ```
 [KernelClient] Account deployment status: {
   address: "0x...",
@@ -58,6 +61,7 @@ Subsequent Deposits (Account Deployed):
 ```
 
 ### Expected Logs on Subsequent Deposits:
+
 ```
 [KernelClient] Account deployment status: {
   address: "0x...",
@@ -98,5 +102,6 @@ beeb0b9 fix: conditionally deploy smart account on first deposit
 ## Rollback
 
 If issues arise:
+
 1. Revert to always passing `address` parameter (pre-fix behavior)
 2. Or add feature flag `FORCE_ADDRESS_PARAMETER=true`
